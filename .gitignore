@@ -94,3 +94,9 @@ ENV/
 files.txt
 
 go.py
+
+certificates/
+axeman.log
+fails.csv
+axeman.json
+.DS_Store

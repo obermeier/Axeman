@@ -38,29 +38,35 @@ PreCertEntry = Struct(
     Terminated
 )
 
-async def retrieve_all_ctls(session=None):
+
+async def retrieve_ctls(session=None, known_ctls=None, blacklisted_ctls=None):
     async with session.get(CTL_LISTS) as response:
         ctl_lists = await response.json()
 
         logs = ctl_lists['logs']
 
         for log in logs:
-            if log['url'].endswith('/'):
-                log['url'] = log['url'][:-1]
-            owner = _get_owner(log, ctl_lists['operators'])
-            log['operated_by'] = owner
+            log['url'] = log['url'].rstrip('/')
+            log['operated_by'] = _get_owner(log, ctl_lists['operators'])
+
+        # Filter list of ctls
+        logs = [log for log in logs if not known_ctls or log['url'] in known_ctls]
+        logs = [log for log in logs if not blacklisted_ctls or log['url'] not in blacklisted_ctls]
 
         return logs
+
 
 def _get_owner(log, owners):
     owner_id = log['operated_by'][0]
     owner = next(x for x in owners if x['id'] == owner_id)
     return owner['name']
 
+
 async def get_max_block_size(log, session):
     async with session.get(DOWNLOAD.format(log['url'], 0, 10000)) as response:
         entries = await response.json()
         return len(entries['entries'])
+
 
 async def retrieve_log_info(log, session):
     block_size = await get_max_block_size(log, session)
@@ -71,35 +77,21 @@ async def retrieve_log_info(log, session):
         info.update(log)
         return info
 
+
 async def populate_work(work_deque, log_info, start=0):
     tree_size = log_info['tree_size']
+    total_size = tree_size - 1
     block_size = log_info['block_size']
 
-    total_size = tree_size - 1
-
-    end = start + block_size
-
-    if end > tree_size:
-        end = tree_size
-
-    chunks = math.ceil((total_size - start) / block_size)
-
-    if chunks == 0:
-        raise Exception("No work needed!")
-
-    for _ in range(chunks):
+    for block_start in range(math.floor(start / block_size) * block_size, math.ceil(tree_size / block_size) * block_size, block_size):
+        # Cap the start within first block
+        range_start = max(start, block_start)
         # Cap the end to the last record in the DB
-        if end >= tree_size:
-            end = tree_size - 1
+        range_end = min(block_start + block_size - 1, total_size)
+        work_deque.append((range_start, range_end))
 
-        assert end >= start, "End {} is less than start {}!".format(end, start)
-        assert end < tree_size, "End {} is less than tree_size {}".format(end, tree_size)
+    return len(work_deque) > 0
 
-        work_deque.append((start, end))
-
-        start += block_size
-
-        end = start + block_size + 1
 
 def add_all_domains(cert_data):
     all_domains = []
@@ -118,6 +110,7 @@ def add_all_domains(cert_data):
     cert_data['leaf_cert']['all_domains'] = list(OrderedDict.fromkeys(all_domains))
 
     return cert_data
+
 
 def dump_cert(certificate):
     subject = certificate.get_subject()
@@ -147,6 +140,7 @@ def dump_cert(certificate):
         "not_after": not_after,
         "as_der": base64.b64encode(crypto.dump_certificate(crypto.FILETYPE_ASN1, certificate)).decode('utf-8')
     }
+
 
 def dump_extensions(certificate):
     extensions = {}
