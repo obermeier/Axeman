@@ -95,8 +95,9 @@ files.txt
 
 go.py
 
+.DS_Store/
 certificates/
+data/
 axeman.log
-fails.csv
 axeman.json
-.DS_Store
+fails.csv
