@@ -13,6 +13,8 @@ import asyncio
 from collections import deque
 import uvloop
 from OpenSSL import crypto
+from aiohttp import ClientTimeout
+
 from axeman import certlib
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -24,6 +26,7 @@ except:
 
 DOWNLOAD_CONCURRENCY = 50
 MAX_QUEUE_SIZE = 1000
+DEFAULT_TIMEOUT = ClientTimeout(connect=100)
 BAD_CTL_SERVERS = [
     "ct.ws.symantec.com", "vega.ws.symantec.com", "deneb.ws.symantec.com", "sirius.ws.symantec.com",
     "log.certly.io", "ct.izenpe.com", "ct.izenpe.eus", "ct.wosign.com", "ctlog.wosign.com", "ctlog2.wosign.com",
@@ -109,7 +112,7 @@ async def download_worker(session, log_info, work_deque, download_queue, output_
 
         logging.debug("[{}] Queueing up interval {}-{}...".format(log_info['url'], start, end))
 
-        for x in range(3):  # Try 3 times
+        for _ in range(3):  # Try 3 times
             try:
                 async with session.get(certlib.DOWNLOAD.format(log_info['url'], start, end)) as response:
                     entry_list = await response.json()
@@ -119,7 +122,7 @@ async def download_worker(session, log_info, work_deque, download_queue, output_
                 logging.exception("Exception getting interval {}-{}! {}".format(start, end, e))
         else:  # Notorious for else, if we didn't encounter a break our request failed 3 times D:
             with open(output_dir + '/fails.csv', 'a') as f:
-                f.write(",".join([log_info['url'], str(start), str(end)]))
+                f.write(",".join([log_info['url'], str(start), str(end)]) + "\n")
             return
 
         for index, entry in zip(range(start, end + 1), entry_list['entries']):
@@ -139,7 +142,7 @@ async def queue_monitor(log_info, work_deque, download_results_queue, ctl_progre
 
     while True:
         logging.info("Queue Status: Processing Queue Size:{0} Downloaded blocks:{1}/{2} ({3:.4f}%)".format(
-            len(download_results_queue._queue),
+            download_results_queue.qsize(),
             total_blocks - len(work_deque),
             total_blocks,
             ((total_blocks - len(work_deque)) / total_blocks) * 100,
@@ -152,7 +155,7 @@ async def queue_monitor(log_info, work_deque, download_results_queue, ctl_progre
 
 
 async def retrieve_certificates(loop, ctl_progress, only_known_ctls=False, output_directory='/tmp', concurrency_count=DOWNLOAD_CONCURRENCY):
-    async with aiohttp.ClientSession(loop=loop, conn_timeout=10) as session:
+    async with aiohttp.ClientSession(loop=loop, timeout=DEFAULT_TIMEOUT) as session:
         ctl_logs = await certlib.retrieve_ctls(session, ctl_progress.get_keys() if only_known_ctls else [], blacklisted_ctls=BAD_CTL_SERVERS)
 
         for log in ctl_logs:
@@ -314,7 +317,7 @@ def process_worker(result_info):
 
 
 async def get_certs_and_print():
-    async with aiohttp.ClientSession(conn_timeout=10) as session:
+    async with aiohttp.ClientSession(timeout=DEFAULT_TIMEOUT) as session:
         total_count = 0
         ctls = await certlib.retrieve_ctls(session, blacklisted_ctls=BAD_CTL_SERVERS)
         print("Found {} CTLs...".format(len(ctls)))
