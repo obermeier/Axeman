@@ -26,7 +26,7 @@ setup(
     author='Ryan Sears',
     install_requires=dependencies,
     author_email='ryan@calidog.io',
-    description='Lumberjack is a multi-threaded and concurrent certificate transparency retriever Edit',
+    description='Axeman is a multi-threaded and concurrent certificate transparency retriever',
     long_description=long_description,
     packages=['axeman'],
     include_package_data=True,
@@ -35,8 +35,8 @@ setup(
             'axeman = axeman.core:main',
         ],
     },
-    license = "MIT",
-    classifiers = [
+    license="MIT",
+    classifiers=[
         "License :: OSI Approved :: MIT License",
         "Topic :: Internet :: WWW/HTTP",
         "Topic :: Software Development :: Testing",
