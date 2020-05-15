@@ -305,9 +305,10 @@ def process_worker(result_info):
         lines_expected = result_info['end'] - result_info['start'] + 1
         if len(lines) != lines_expected:
             logging.error("Too many or too few certificates found in {}. Found {}, expected {}".format(csv_file, len(lines), lines_expected))
-
-        with open(csv_file, 'w', encoding='utf8') as f:
+        csv_file_tmp = csv_file + ".tmp"
+        with open(csv_file_tmp, 'w', encoding='utf8') as f:
             f.write("".join(lines))
+        os.rename(csv_file_tmp, csv_file)  # Ensures the .csv is fully written before other systems can grab it
         logging.debug("[{}] CSV {} written!".format(os.getpid(), csv_file))
 
     except Exception as e:
