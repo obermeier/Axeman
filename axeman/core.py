@@ -24,6 +24,7 @@ try:
 except:
     pass
 
+MAX_RETRIES = 3
 DOWNLOAD_CONCURRENCY = 50
 MAX_QUEUE_SIZE = 1000
 DEFAULT_TIMEOUT = ClientTimeout(connect=100)
@@ -112,18 +113,19 @@ async def download_worker(session, log_info, work_deque, download_queue, output_
 
         logging.debug("[{}] Queueing up interval {}-{}...".format(log_info['url'], start, end))
 
-        for _ in range(3):  # Try 3 times
+        for retry in range(MAX_RETRIES):  # Try MAX_RETRIES times
             try:
                 async with session.get(certlib.DOWNLOAD.format(log_info['url'], start, end)) as response:
                     entry_list = await response.json()
                     logging.debug("[{}] Retrieved interval {}-{}...".format(log_info['url'], start, end))
                     break
             except Exception as e:
-                logging.exception("Exception getting interval {}-{}! {}".format(start, end, e))
+                if retry == MAX_RETRIES - 1:
+                    logging.exception("Exception getting interval {}-{}! {}".format(start, end, e))
         else:  # Notorious for else, if we didn't encounter a break our request failed 3 times D:
             with open(output_dir + '/fails.csv', 'a') as f:
                 f.write(",".join([log_info['url'], str(start), str(end)]) + "\n")
-            return
+            continue
 
         for index, entry in zip(range(start, end + 1), entry_list['entries']):
             entry['cert_index'] = index
