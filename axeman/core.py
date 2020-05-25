@@ -2,6 +2,7 @@ import os
 import math
 import base64
 import hashlib
+from asyncio import sleep
 import aiohttp
 import aioprocessing
 import logging
@@ -24,7 +25,7 @@ try:
 except:
     pass
 
-MAX_RETRIES = 3
+RETRY_WAIT = 10
 DOWNLOAD_CONCURRENCY = 50
 MAX_QUEUE_SIZE = 1000
 DEFAULT_TIMEOUT = ClientTimeout(connect=100)
@@ -113,19 +114,18 @@ async def download_worker(session, log_info, work_deque, download_queue, output_
 
         logging.debug("[{}] Queueing up interval {}-{}...".format(log_info['url'], start, end))
 
-        for retry in range(MAX_RETRIES):  # Try MAX_RETRIES times
+        while True:
             try:
                 async with session.get(certlib.DOWNLOAD.format(log_info['url'], start, end)) as response:
                     entry_list = await response.json()
                     logging.debug("[{}] Retrieved interval {}-{}...".format(log_info['url'], start, end))
                     break
             except Exception as e:
-                if retry == MAX_RETRIES - 1:
-                    logging.exception("Exception getting interval {}-{}! {}".format(start, end, e))
-        else:  # Notorious for else, if we didn't encounter a break our request failed 3 times D:
-            with open(output_dir + '/fails.csv', 'a') as f:
-                f.write(",".join([log_info['url'], str(start), str(end)]) + "\n")
-            continue
+                # Normally "Attempt to decode JSON with unexpected mimetype"->"Too many connections" with "type text/plain;"
+                # or a simple timeout. A bit of a hack, but I really don't wanna loose data here. A better solution would be
+                # to have a separate waiting queue since this behaves much like a spin lock
+                logging.info("Exception getting interval {}-{}, '{}', retrying in {} sec...".format(start, end, e, RETRY_WAIT))
+                await sleep(RETRY_WAIT)
 
         for index, entry in zip(range(start, end + 1), entry_list['entries']):
             entry['cert_index'] = index
@@ -298,7 +298,7 @@ def process_worker(result_info):
                     str(entry['cert_index']),
                     chain_hash,
                     cert_data['leaf_cert']['as_der'],
-                    ' '.join(cert_data['leaf_cert']['all_domains']),
+                    '|'.join(cert_data['leaf_cert']['all_domains']),
                     str(cert_data['leaf_cert']['not_before']),
                     str(cert_data['leaf_cert']['not_after'])
                 ]) + "\n"
