@@ -105,7 +105,7 @@ class CTLProgress:
             f.write(json.dumps(progress, indent=4))
 
 
-async def download_worker(session, log_info, work_deque, download_queue, output_dir):
+async def download_worker(session, log_info, work_deque, download_queue):
     while True:
         try:
             start, end = work_deque.popleft()
@@ -123,7 +123,7 @@ async def download_worker(session, log_info, work_deque, download_queue, output_
             except Exception as e:
                 # Normally "Attempt to decode JSON with unexpected mimetype"->"Too many connections" with "type text/plain;"
                 # or a simple timeout. A bit of a hack, but I really don't wanna loose data here. A better solution would be
-                # to have a separate waiting queue since this behaves much like a spin lock
+                # to have a separate waiting queue since this current implementation behaves much like a spin lock
                 logging.info("Exception getting interval {}-{}, '{}', retrying in {} sec...".format(start, end, e, RETRY_WAIT))
                 await sleep(RETRY_WAIT)
 
@@ -181,7 +181,7 @@ async def retrieve_certificates(loop, ctl_progress, only_known_ctls=False, outpu
                 logging.exception("Failed to populate work! {}".format(e))
                 continue
 
-            download_tasks = asyncio.gather(*[download_worker(session, log_info, work_deque, download_results_queue, output_directory) for _ in range(concurrency_count)])
+            download_tasks = asyncio.gather(*[download_worker(session, log_info, work_deque, download_results_queue) for _ in range(concurrency_count)])
             processing_task = asyncio.ensure_future(processing_coro(download_results_queue, ctl_progress, output_directory))
             queue_monitor_task = asyncio.ensure_future(queue_monitor(log_info, work_deque, download_results_queue, ctl_progress))
 
@@ -224,12 +224,13 @@ async def processing_coro(download_results_queue, ctl_progress, output_dir):
 
         logging.debug("Got a chunk of {}. Mapping into process pool".format(process_pool.pool_workers))
 
-        for entry in entries_iter:
-            csv_storage = '{}/certificates/{}'.format(output_dir, entry['log_info']['url'].replace('/', '_'))
-            if not os.path.exists(csv_storage):
+        for shard, entry in enumerate(entries_iter):
+            friendly_log_name = entry['log_info']['url'].replace('/', '_')
+            log_dir = '{}/certificates/{}'.format(output_dir, friendly_log_name)
+            if not os.path.exists(log_dir):
                 logging.debug("[{}] Making dir...".format(os.getpid()))
-                os.makedirs(csv_storage)
-            entry['log_dir'] = csv_storage
+                os.makedirs(log_dir, exist_ok=True)
+            entry['csv_file'] = '{}/{}-shard-{}'.format(log_dir, friendly_log_name, shard)
 
         if len(entries_iter) > 0:
             result = await process_pool.coro_map(process_worker, entries_iter)
@@ -250,10 +251,10 @@ def process_worker(result_info):
     if not result_info:
         return None
 
-    try:
-        csv_storage = result_info['log_dir']
-        csv_file = "{}/{}-{}.csv".format(csv_storage, result_info['start'], result_info['end'])
+    start = result_info['start']
+    end = result_info['end']
 
+    try:
         lines = []
 
         logging.debug("[{}] Parsing...".format(os.getpid()))
@@ -304,19 +305,18 @@ def process_worker(result_info):
                 ]) + "\n"
             )
 
-        lines_expected = result_info['end'] - result_info['start'] + 1
+        lines_expected = end - start + 1
         if len(lines) != lines_expected:
-            logging.error("Too many or too few certificates found in {}. Found {}, expected {}".format(csv_file, len(lines), lines_expected))
-        csv_file_tmp = csv_file + ".tmp"
-        with open(csv_file_tmp, 'w', encoding='utf8') as f:
+            logging.error("Too many or too few certificates found in interval {}-{}. Found {}, expected {}".format(start, end, len(lines), lines_expected))
+        csv_file = result_info['csv_file']
+        with open(csv_file, 'a', encoding='utf8') as f:
             f.write("".join(lines))
-        os.rename(csv_file_tmp, csv_file)  # Ensures the .csv is fully written before other systems can grab it
-        logging.debug("[{}] CSV {} written!".format(os.getpid(), csv_file))
+        logging.debug("[{}] Interval {}-{} written to {}".format(os.getpid(), start, end, csv_file))
 
     except Exception as e:
-        logging.exception("[{}] Failed to handle {}, interval {}-{}! {}".format(os.getpid(), result_info['log_info']['url'], result_info['start'], result_info['end'], e))
+        logging.exception("[{}] Failed to handle {}, interval {}-{}! {}".format(os.getpid(), result_info['log_info']['url'], start, end, e))
 
-    return result_info['log_info']['url'], [result_info['start'], result_info['end']]
+    return result_info['log_info']['url'], [start, end]
 
 
 async def get_certs_and_print():
