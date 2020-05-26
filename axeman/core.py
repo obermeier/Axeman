@@ -16,7 +16,7 @@ import uvloop
 from OpenSSL import crypto
 from aiohttp import ClientTimeout
 
-from axeman import certlib
+from . import certlib
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
@@ -230,7 +230,7 @@ async def processing_coro(download_results_queue, ctl_progress, output_dir):
             if not os.path.exists(log_dir):
                 logging.debug("[{}] Making dir...".format(os.getpid()))
                 os.makedirs(log_dir, exist_ok=True)
-            entry['csv_file'] = '{}/{}-shard-{}'.format(log_dir, friendly_log_name, shard)
+            entry['csv_file'] = '{}/{}-shard-{}.csv'.format(log_dir, friendly_log_name, shard)
 
         if len(entries_iter) > 0:
             result = await process_pool.coro_map(process_worker, entries_iter)
