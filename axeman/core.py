@@ -25,10 +25,10 @@ try:
 except:
     pass
 
-RETRY_WAIT = 10
+RETRY_WAIT = 1
 DOWNLOAD_CONCURRENCY = 50
 MAX_QUEUE_SIZE = 1000
-DEFAULT_TIMEOUT = ClientTimeout(connect=100)
+DEFAULT_TIMEOUT = ClientTimeout(connect=10)
 BAD_CTL_SERVERS = [
     "ct.ws.symantec.com", "vega.ws.symantec.com", "deneb.ws.symantec.com", "sirius.ws.symantec.com",
     "log.certly.io", "ct.izenpe.com", "ct.izenpe.eus", "ct.wosign.com", "ctlog.wosign.com", "ctlog2.wosign.com",
@@ -362,7 +362,7 @@ def main():
 
     parser.add_argument('-v', dest="verbose", action="store_true", help="Print out verbose/debug info")
 
-    parser.add_argument('-c', dest='concurrency_count', action='store', default=50, type=int, help="The number of concurrent downloads to run at a time")
+    parser.add_argument('-c', dest='concurrency_count', action='store', default=DOWNLOAD_CONCURRENCY, type=int, help="The number of concurrent downloads to run at a time")
 
     parser.add_argument('-p', dest="progress_file", action="store", help="File hold the progress")
 
