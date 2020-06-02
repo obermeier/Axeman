@@ -88,6 +88,8 @@ async def populate_work(work_deque, log_info, start=0):
         range_start = max(start, block_start)
         # Cap the end to the last record in the DB
         range_end = min(block_start + block_size - 1, total_size)
+        if range_start > range_end:
+            break  # happens after a rerun when no new certs has been appended to the log
         work_deque.append((range_start, range_end))
 
     return len(work_deque) > 0
