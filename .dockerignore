@@ -1,0 +1,11 @@
+.dockerignore
+.gitignore
+.git
+.idea
+.DS_Store/
+venv/
+certificates/
+data/
+axeman.log
+axeman.json
+fails.csv
