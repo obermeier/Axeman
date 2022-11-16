@@ -6,7 +6,7 @@ from collections import OrderedDict
 
 from OpenSSL import crypto
 
-CTL_LISTS = 'https://www.gstatic.com/ct/log_list/v2/log_list.json'
+CTL_LISTS = 'https://www.gstatic.com/ct/log_list/v2/all_logs_list.json'
 
 CTL_INFO = "{}/ct/v1/get-sth"
 

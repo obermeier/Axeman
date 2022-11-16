@@ -28,6 +28,7 @@ except:
 RETRY_WAIT = 1
 DOWNLOAD_CONCURRENCY = 50
 MAX_QUEUE_SIZE = 1000
+PARTITION_SIZE=2000000
 DEFAULT_TIMEOUT = ClientTimeout(connect=10)
 BAD_CTL_SERVERS = [
     "ct.ws.symantec.com", "vega.ws.symantec.com", "deneb.ws.symantec.com", "sirius.ws.symantec.com",
@@ -195,7 +196,7 @@ async def retrieve_certificates(loop, ctl_progress, only_known_ctls=False, outpu
 
             queue_monitor_task.cancel()
 
-            logging.info("Completed {}, stored at {}/certificates/{}".format(log_info['description'], output_directory, log_info['url'].replace('/', '_')))
+            logging.info("Completed {}, stored at {}/certificates/{}".format(log_info['description'], output_directory, log_info['url'].replace('https://', '')))
 
             ctl_progress.compress()
             ctl_progress.save()
@@ -205,8 +206,9 @@ async def retrieve_certificates(loop, ctl_progress, only_known_ctls=False, outpu
                 logging.error("Number of intervals for url {} was {}, expected 0 or 1".format(log_info['url'], len(intervals)))
 
 
-async def processing_coro(download_results_queue, ctl_progress, output_dir):
+async def processing_coro(download_results_queue, ctl_progress, output_dir, partition_size=PARTITION_SIZE):
     logging.debug("Starting processing coro and process pool")
+
     process_pool = aioprocessing.AioPool(initargs=(output_dir,))
 
     done = False
@@ -225,12 +227,13 @@ async def processing_coro(download_results_queue, ctl_progress, output_dir):
         logging.debug("Got a chunk of {}. Mapping into process pool".format(process_pool.pool_workers))
 
         for shard, entry in enumerate(entries_iter):
-            friendly_log_name = entry['log_info']['url'].replace('/', '_')
+            friendly_log_name = entry['log_info']['url'].replace('https://', '').replace('/', '_')
             log_dir = '{}/certificates/{}'.format(output_dir, friendly_log_name)
             if not os.path.exists(log_dir):
                 logging.debug("[{}] Making dir...".format(os.getpid()))
                 os.makedirs(log_dir, exist_ok=True)
-            entry['csv_file'] = '{}/{}-shard-{}.csv'.format(log_dir, friendly_log_name, shard)
+            offset_split=(int(entry['start']/partition_size))
+            entry['csv_file'] = '{}/{}-shard-{}-part-{}.csv'.format(log_dir, friendly_log_name, shard, offset_split)
 
         if len(entries_iter) > 0:
             result = await process_pool.coro_map(process_worker, entries_iter)
@@ -380,7 +383,6 @@ def main():
         logging.basicConfig(format='[%(levelname)s:%(name)s] %(asctime)s - %(message)s', level=logging.INFO, handlers=handlers)
 
     logging.info("Starting...")
-
     if args.ctl_url:
         ctl_progress = CTLProgress(key=args.ctl_url.strip("'"), offset=int(args.ctl_offset), filename=args.progress_file)
         loop.run_until_complete(retrieve_certificates(loop, ctl_progress=ctl_progress, only_known_ctls=True, concurrency_count=args.concurrency_count, output_directory=args.output_dir))
