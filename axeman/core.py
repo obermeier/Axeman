@@ -157,9 +157,9 @@ async def queue_monitor(log_info, work_deque, download_results_queue, ctl_progre
         await asyncio.sleep(2)
 
 
-async def retrieve_certificates(loop, ctl_progress, only_known_ctls=False, output_directory='/tmp', concurrency_count=DOWNLOAD_CONCURRENCY):
+async def retrieve_certificates(loop, ctl_url, ctl_progress, only_known_ctls=False, output_directory='/tmp', concurrency_count=DOWNLOAD_CONCURRENCY):
     async with aiohttp.ClientSession(loop=loop, timeout=DEFAULT_TIMEOUT) as session:
-        ctl_logs = await certlib.retrieve_ctls(session, ctl_progress.get_keys() if only_known_ctls else [], blacklisted_ctls=BAD_CTL_SERVERS)
+        ctl_logs = await certlib.retrieve_ctls(session, ctl_url, ctl_progress.get_keys() if only_known_ctls else [], blacklisted_ctls=BAD_CTL_SERVERS)
 
         for log in ctl_logs:
             url = log['url']
@@ -385,7 +385,7 @@ def main():
     logging.info("Starting...")
     if args.ctl_url:
         ctl_progress = CTLProgress(key=args.ctl_url.strip("'"), offset=int(args.ctl_offset), filename=args.progress_file)
-        loop.run_until_complete(retrieve_certificates(loop, ctl_progress=ctl_progress, only_known_ctls=True, concurrency_count=args.concurrency_count, output_directory=args.output_dir))
+        loop.run_until_complete(retrieve_certificates(loop, ctl_url=args.ctl_url.strip("'"), ctl_progress=ctl_progress, only_known_ctls=True, concurrency_count=args.concurrency_count, output_directory=args.output_dir))
     else:
         ctl_progress = CTLProgress(filename=args.progress_file)
         loop.run_until_complete(retrieve_certificates(loop, ctl_progress=ctl_progress, concurrency_count=args.concurrency_count, output_directory=args.output_dir))

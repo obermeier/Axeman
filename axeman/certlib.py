@@ -39,7 +39,7 @@ PreCertEntry = Struct(
 )
 
 
-async def retrieve_ctls(session=None, known_ctls=None, blacklisted_ctls=None):
+async def retrieve_ctls(session=None, wanted_url=None, known_ctls=None, blacklisted_ctls=None):
     async with session.get(CTL_LISTS) as response:
         ctl_lists = await response.json()
 
@@ -49,10 +49,15 @@ async def retrieve_ctls(session=None, known_ctls=None, blacklisted_ctls=None):
         for operator in operators:
             for log in operator['logs']:
                 if log['url'].endswith('/'):
-                    log['url'] = log['url'][:-1]
-                log['operated_by'] = operator['name']
-                logs.append(log)
-
+                    if log['url'] is None:
+                        log['url'] = log['url'][:-1]
+                        log['operated_by'] = operator['name']
+                        logs.append(log)
+                    else:
+                        if log['url']==wanted_url:
+                            log['url'] = log['url'][:-1]
+                            log['operated_by'] = operator['name']
+                            logs.append(log)
         return logs
 
 
