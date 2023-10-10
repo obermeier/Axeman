@@ -42,7 +42,6 @@ PreCertEntry = Struct(
 async def retrieve_ctls(session=None, wanted_url=None, known_ctls=None, blacklisted_ctls=None):
     async with session.get(CTL_LISTS) as response:
         ctl_lists = await response.json()
-
         operators = ctl_lists['operators']
 
         logs = list()
@@ -58,6 +57,14 @@ async def retrieve_ctls(session=None, wanted_url=None, known_ctls=None, blacklis
                             log['url'] = log['url'][:-1]
                             log['operated_by'] = operator['name']
                             logs.append(log)
+        if not logs:
+            print("Requested URL not in CTL list {}. Custom entry will be created.".format(CTL_LISTS))
+
+            log = {}
+            log['description'] = "Custom CTL"
+            log['url'] = wanted_url
+            logs.append(log)
+
         return logs
 
 
@@ -68,6 +75,7 @@ def _get_owner(log, owners):
 
 
 async def get_max_block_size(log, session):
+    #print(DOWNLOAD.format(log['url'], 0, 10000))
     async with session.get(DOWNLOAD.format(log['url'], 0, 10000)) as response:
         entries = await response.json()
         return len(entries['entries'])

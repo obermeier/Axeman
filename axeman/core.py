@@ -25,9 +25,9 @@ try:
 except:
     pass
 
-RETRY_WAIT = 1
-DOWNLOAD_CONCURRENCY = 50
-MAX_QUEUE_SIZE = 1000
+RETRY_WAIT = 8 
+DOWNLOAD_CONCURRENCY = 4 
+MAX_QUEUE_SIZE = 50 
 PARTITION_SIZE=2000000
 DEFAULT_TIMEOUT = ClientTimeout(connect=10)
 BAD_CTL_SERVERS = [
@@ -160,9 +160,11 @@ async def queue_monitor(log_info, work_deque, download_results_queue, ctl_progre
 async def retrieve_certificates(loop, ctl_url, ctl_progress, only_known_ctls=False, output_directory='/tmp', concurrency_count=DOWNLOAD_CONCURRENCY):
     async with aiohttp.ClientSession(loop=loop, timeout=DEFAULT_TIMEOUT) as session:
         ctl_logs = await certlib.retrieve_ctls(session, ctl_url, ctl_progress.get_keys() if only_known_ctls else [], blacklisted_ctls=BAD_CTL_SERVERS)
-
+        if not ctl_logs:
+            logging.info("No ctl for URL found. [May not exist in list list]")
         for log in ctl_logs:
             url = log['url']
+
             work_deque = deque()
             download_results_queue = asyncio.Queue(maxsize=MAX_QUEUE_SIZE)
 
@@ -389,7 +391,7 @@ def main():
     else:
         ctl_progress = CTLProgress(filename=args.progress_file)
         loop.run_until_complete(retrieve_certificates(loop, ctl_progress=ctl_progress, concurrency_count=args.concurrency_count, output_directory=args.output_dir))
-
+    print(args.ctl_url)
 
 if __name__ == "__main__":
     main()
