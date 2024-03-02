@@ -16,6 +16,13 @@ import uvloop
 from OpenSSL import crypto
 from aiohttp import ClientTimeout
 
+from kafka import KafkaProducer
+from kafka.errors import KafkaError
+from time import strftime, localtime
+producer = None
+import hashlib
+
+
 from . import certlib
 
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
@@ -105,6 +112,23 @@ class CTLProgress:
             progress = {key: self.get_offset(key) for key in self.get_keys()}
             f.write(json.dumps(progress, indent=4))
 
+
+def on_send_success(record_metadata):
+    logging.debug(record_metadata.topic)
+    logging.debug(record_metadata.partition)
+    logging.debug(record_metadata.offset)
+
+def on_send_error(excp):
+    logging.error('I am an errback', exc_info=excp)
+
+def write_to_kafka(metadata_list):
+    global producer
+    if producer is None:
+        producer = KafkaProducer(bootstrap_servers=['80.241.209.21:9092'], value_serializer=lambda m: json.dumps(m).encode('ascii'))
+
+    for metadata in metadata_list:
+        future = producer.send('ctl-533', metadata).add_callback(on_send_success).add_errback(on_send_error)
+        result = future.get(timeout=10)
 
 async def download_worker(session, log_info, work_deque, download_queue):
     while True:
@@ -261,6 +285,7 @@ def process_worker(result_info):
 
     try:
         lines = []
+        json_metadata = []
 
         logging.debug("[{}] Parsing...".format(os.getpid()))
         for entry in result_info['entries']:
@@ -296,6 +321,8 @@ def process_worker(result_info):
             }
 
             chain_hash = hashlib.sha256("".join([x['as_der'] for x in cert_data['chain']]).encode('ascii')).hexdigest()
+            crt_hash = cert_data['leaf_cert']['fingerprint_sha1']
+
 
             # header = "url, cert_index, chain_hash, cert_der, all_domains, not_before, not_after"
             lines.append(
@@ -310,13 +337,31 @@ def process_worker(result_info):
                 ]) + "\n"
             )
 
+            json_metadata.append({
+                    'ctl_url': result_info['log_info']['url'],
+                    'header_timestamp': mtl.Timestamp,
+                    'not_after': cert_data['leaf_cert']['not_after'],
+                    'not_before': cert_data['leaf_cert']['not_before'],
+                    'cert_index': entry['cert_index'],
+                    'cert_fingerprint_sha1': crt_hash
+                })
+            
+
         lines_expected = end - start + 1
         if len(lines) != lines_expected:
             logging.error("Too many or too few certificates found in interval {}-{}. Found {}, expected {}".format(start, end, len(lines), lines_expected))
-        csv_file = result_info['csv_file']
-        with open(csv_file, 'a', encoding='utf8') as f:
-            f.write("".join(lines))
-        logging.debug("[{}] Interval {}-{} written to {}".format(os.getpid(), start, end, csv_file))
+        
+        if json_metadata[0]['header_timestamp'] >= 1704070861000 and json_metadata[0]['header_timestamp'] <= 1706749261000: # Endtime 01.01.2024 01.02.2024
+
+            write_to_kafka(json_metadata)
+        else:
+            print("Batch end reached: " + strftime('%Y-%m-%d %H:%M:%S', localtime(json_metadata[0]['header_timestamp']/1000)))
+
+        # Stefan
+        #csv_file = result_info['csv_file']
+        #with open(csv_file, 'a', encoding='utf8') as f:
+        #    f.write("".join(lines))
+        #logging.debug("[{}] Interval {}-{} written to {}".format(os.getpid(), start, end, csv_file))
 
     except Exception as e:
         logging.exception("[{}] Failed to handle {}, interval {}-{}! {}".format(os.getpid(), result_info['log_info']['url'], start, end, e))
