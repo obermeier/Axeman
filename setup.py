@@ -20,7 +20,7 @@ List and outputs them to CSV.
 """
 
 setup(
-    name='axeman',
+    name='axeman-meta',
     version=axeman.__version__,
     url='https://github.com/CaliDog/Axeman/',
     author='Ryan Sears',
@@ -32,7 +32,7 @@ setup(
     include_package_data=True,
     entry_points={
         'console_scripts': [
-            'axeman = axeman.core:main',
+            'axeman-meta = axeman.core:main',
         ],
     },
     license="MIT",

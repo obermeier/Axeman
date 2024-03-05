@@ -35,7 +35,7 @@ except:
 RETRY_WAIT = 8 
 DOWNLOAD_CONCURRENCY = 4 
 MAX_QUEUE_SIZE = 50 
-PARTITION_SIZE=2000000
+PARTITION_SIZE=8000000
 DEFAULT_TIMEOUT = ClientTimeout(connect=10)
 BAD_CTL_SERVERS = [
     "ct.ws.symantec.com", "vega.ws.symantec.com", "deneb.ws.symantec.com", "sirius.ws.symantec.com",
@@ -181,7 +181,7 @@ async def queue_monitor(log_info, work_deque, download_results_queue, ctl_progre
         await asyncio.sleep(2)
 
 
-async def retrieve_certificates(loop, ctl_url, ctl_progress, only_known_ctls=False, output_directory='/tmp', concurrency_count=DOWNLOAD_CONCURRENCY):
+async def retrieve_certificates(loop, ctl_url, ctl_progress, only_known_ctls=False, output_directory='/tmp', concurrency_count=DOWNLOAD_CONCURRENCY, start_timerange=0, end_timerange=33266306427000, end_block=None):
     async with aiohttp.ClientSession(loop=loop, timeout=DEFAULT_TIMEOUT) as session:
         ctl_logs = await certlib.retrieve_ctls(session, ctl_url, ctl_progress.get_keys() if only_known_ctls else [], blacklisted_ctls=BAD_CTL_SERVERS)
         if not ctl_logs:
@@ -200,7 +200,7 @@ async def retrieve_certificates(loop, ctl_url, ctl_progress, only_known_ctls=Fal
                 continue
 
             try:
-                result = await certlib.populate_work(work_deque, log_info, start=ctl_progress.get_offset(url))
+                result = await certlib.populate_work(work_deque, log_info, start=ctl_progress.get_offset(url), end=end_block)
                 if not result:
                     logging.info("Log {} needs no update".format(url))
                     continue
@@ -259,8 +259,9 @@ async def processing_coro(download_results_queue, ctl_progress, output_dir, part
                 logging.debug("[{}] Making dir...".format(os.getpid()))
                 os.makedirs(log_dir, exist_ok=True)
             offset_split=(int(entry['start']/partition_size))
-            entry['csv_file'] = '{}/{}-shard-{}-part-{}.csv'.format(log_dir, friendly_log_name, shard, offset_split)
-
+            entry['csv_file'] = '{}/{}-shard-{}-part-{}.csv'.format(log_dir, friendly_log_name, shard, offset_split) 
+            entry['csv_metadata_file'] = '{}/{}-shard-{}-part-{}-metadata.csv'.format(log_dir, friendly_log_name, shard, offset_split) 
+            
         if len(entries_iter) > 0:
             result = await process_pool.coro_map(process_worker, entries_iter)
             [ctl_progress.add_interval(r[0], r[1]) for r in result if r]
@@ -286,6 +287,7 @@ def process_worker(result_info):
     try:
         lines = []
         json_metadata = []
+        lines_metadata = []
 
         logging.debug("[{}] Parsing...".format(os.getpid()))
         for entry in result_info['entries']:
@@ -325,37 +327,53 @@ def process_worker(result_info):
 
 
             # header = "url, cert_index, chain_hash, cert_der, all_domains, not_before, not_after"
-            lines.append(
-                ",".join([
-                    result_info['log_info']['url'],
-                    str(entry['cert_index']),
-                    chain_hash,
-                    cert_data['leaf_cert']['as_der'],
-                    '|'.join(cert_data['leaf_cert']['all_domains']),
-                    str(cert_data['leaf_cert']['not_before']),
-                    str(cert_data['leaf_cert']['not_after'])
-                ]) + "\n"
-            )
+            #lines.append(
+            #    ",".join([
+            #        result_info['log_info']['url'],
+            #        str(entry['cert_index']),
+            #        chain_hash,
+            #        cert_data['leaf_cert']['as_der'],
+            #        '|'.join(cert_data['leaf_cert']['all_domains']),
+            #        str(cert_data['leaf_cert']['not_before']),
+            #        str(cert_data['leaf_cert']['not_after'])
+            #    ]) + "\n"
+            #)
 
             json_metadata.append({
                     'ctl_url': result_info['log_info']['url'],
                     'header_timestamp': mtl.Timestamp,
-                    'not_after': cert_data['leaf_cert']['not_after'],
-                    'not_before': cert_data['leaf_cert']['not_before'],
                     'cert_index': entry['cert_index'],
                     'cert_fingerprint_sha1': crt_hash
                 })
+            
+            #lines_metadata.append(
+            #    ",".join([
+            #        result_info['log_info']['url'],
+            #        str(mtl.Timestamp),
+            #        str(cert_data['leaf_cert']['not_after']),
+            #        str(cert_data['leaf_cert']['not_before']),
+            #        str(entry['cert_index']),
+            #        crt_hash
+            #    ]) + "\n"
+            #    )
             
 
         lines_expected = end - start + 1
         if len(lines) != lines_expected:
             logging.error("Too many or too few certificates found in interval {}-{}. Found {}, expected {}".format(start, end, len(lines), lines_expected))
         
-        if json_metadata[0]['header_timestamp'] >= 1704070861000 and json_metadata[0]['header_timestamp'] <= 1706749261000: # Endtime 01.01.2024 01.02.2024
+        header_timestamp = (int(json_metadata[0]['header_timestamp']))
+        #if header_timestamp >= start_timerange and header_timestamp <= end_timerange:
+            #write_to_kafka(json_metadata)
+        #else:
+        #    print("Batch end reached: " + strftime('%Y-%m-%d %H:%M:%S', localtime(json_metadata[0]['header_timestamp']/1000)))
 
-            write_to_kafka(json_metadata)
-        else:
-            print("Batch end reached: " + strftime('%Y-%m-%d %H:%M:%S', localtime(json_metadata[0]['header_timestamp']/1000)))
+
+        # Write metadata
+        csv_metatada_file = result_info['csv_metadata_file']
+        with open(csv_metatada_file, 'a', encoding='utf8') as f:
+            f.write("".join(lines_metadata))
+        logging.debug("[{}] Interval {}-{} written to {}".format(os.getpid(), start, end, csv_metatada_file))
 
         # Stefan
         #csv_file = result_info['csv_file']
@@ -408,6 +426,8 @@ def main():
 
     parser.add_argument('-z', dest="ctl_offset", action="store", default=0, help="The CTL offset to start at")
 
+    parser.add_argument('-y', dest="ctl_offset_end", action="store", type=int, default=None, help="Number of blocks")
+    
     parser.add_argument('-o', dest="output_dir", action="store", default=".", help="The output directory to store certificates in")
 
     parser.add_argument('-v', dest="verbose", action="store_true", help="Print out verbose/debug info")
@@ -415,6 +435,10 @@ def main():
     parser.add_argument('-c', dest='concurrency_count', action='store', default=DOWNLOAD_CONCURRENCY, type=int, help="The number of concurrent downloads to run at a time")
 
     parser.add_argument('-p', dest="progress_file", action="store", help="File hold the progress")
+
+    parser.add_argument('-s', dest="starttime", type=int, action="store", help="Starttime from there on process the entries")
+
+    parser.add_argument('-e', dest="endtime", type=int, action="store", help="Endtime from there on no entries will be processed.")
 
     args = parser.parse_args()
 
@@ -430,12 +454,24 @@ def main():
         logging.basicConfig(format='[%(levelname)s:%(name)s] %(asctime)s - %(message)s', level=logging.INFO, handlers=handlers)
 
     logging.info("Starting...")
+    
+    # Hack Stefan
+    global start_timerange
+    start_timerange=0
+    if args.starttime != None:
+        start_timerange=int(args.starttime)
+    
+    global end_timerange
+    end_timerange=96380168882000
+    if args.endtime != None:
+        end_timerange=int(args.endtime)
+
     if args.ctl_url:
         ctl_progress = CTLProgress(key=args.ctl_url.strip("'"), offset=int(args.ctl_offset), filename=args.progress_file)
-        loop.run_until_complete(retrieve_certificates(loop, ctl_url=args.ctl_url.strip("'"), ctl_progress=ctl_progress, only_known_ctls=True, concurrency_count=args.concurrency_count, output_directory=args.output_dir))
+        loop.run_until_complete(retrieve_certificates(loop, ctl_url=args.ctl_url.strip("'"), ctl_progress=ctl_progress, only_known_ctls=True, concurrency_count=args.concurrency_count, output_directory=args.output_dir, start_timerange=args.starttime, end_timerange=args.endtime,  end_block=args.ctl_offset_end))
     else:
         ctl_progress = CTLProgress(filename=args.progress_file)
-        loop.run_until_complete(retrieve_certificates(loop, ctl_progress=ctl_progress, concurrency_count=args.concurrency_count, output_directory=args.output_dir))
+        loop.run_until_complete(retrieve_certificates(loop,                                  ctl_progress=ctl_progress, concurrency_count=args.concurrency_count, output_directory=args.output_dir, start_timerange=args.starttime, end_timerange=args.endtime, end_block=args.ctl_offset_end))
     print(args.ctl_url)
 
 if __name__ == "__main__":

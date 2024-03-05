@@ -91,7 +91,7 @@ async def retrieve_log_info(log, session):
         return info
 
 
-async def populate_work(work_deque, log_info, start=0):
+async def populate_work(work_deque, log_info, start=0, end=None):
     tree_size = log_info['tree_size']
     total_size = tree_size - 1
     block_size = log_info['block_size']
@@ -101,9 +101,19 @@ async def populate_work(work_deque, log_info, start=0):
         range_start = max(start, block_start)
         # Cap the end to the last record in the DB
         range_end = min(block_start + block_size - 1, total_size)
-        if range_start > range_end:
-            break  # happens after a rerun when no new certs has been appended to the log
-        work_deque.append((range_start, range_end))
+
+        if end != None:
+            print("............a " + str((math.floor(start / block_size) * block_size + block_size - 1)*end ))
+            print("............d " + str(range_end))
+            if (math.floor(start / block_size) * block_size + block_size - 1)*end > range_end: # Stefan chck end
+                print("AA End: " + str((block_start + block_size - 1)*end) + " range_end" + str(range_end))
+                if range_start > range_end:
+                    break  # happens after a rerun when no new certs has been appended to the log
+                work_deque.append((range_start, range_end))
+        else:
+            if range_start > range_end:
+                break  # happens after a rerun when no new certs has been appended to the log
+            work_deque.append((range_start, range_end))
 
     return len(work_deque) > 0
 
