@@ -176,6 +176,18 @@ async def retrieve_certificates(loop, ctl_url, ctl_progress, only_known_ctls=Fal
                 continue
 
             try:
+                # Limit work_que size
+                MAX_WORK_QUEUE_SIZE=30000
+                block_size = log_info['block_size']
+                start_pos=ctl_progress.get_offset(url)
+
+                print("Block size: " + str(block_size))
+                
+                # Limit number of jobs if limit is reached
+                #if start_pos + MAX_WORK_QUEUE_SIZE < log_info['tree_size']:
+                #    log_info['tree_size'] = start_pos + MAX_WORK_QUEUE_SIZE 
+                #    print("Fix pathhht")
+
                 result = await certlib.populate_work(work_deque, log_info, start=ctl_progress.get_offset(url))
                 if not result:
                     logging.info("Log {} needs no update".format(url))
@@ -183,7 +195,7 @@ async def retrieve_certificates(loop, ctl_url, ctl_progress, only_known_ctls=Fal
             except Exception as e:
                 logging.exception("Failed to populate work! {}".format(e))
                 continue
-
+            print("Work queue size " + str(len(work_deque)))
             download_tasks = asyncio.gather(*[download_worker(session, log_info, work_deque, download_results_queue) for _ in range(concurrency_count)])
             processing_task = asyncio.ensure_future(processing_coro(download_results_queue, ctl_progress, output_directory))
             queue_monitor_task = asyncio.ensure_future(queue_monitor(log_info, work_deque, download_results_queue, ctl_progress))
