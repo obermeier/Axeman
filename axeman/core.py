@@ -246,8 +246,14 @@ async def processing_coro(download_results_queue, ctl_progress, output_dir, part
             if not os.path.exists(log_dir):
                 logging.debug("[{}] Making dir...".format(os.getpid()))
                 os.makedirs(log_dir, exist_ok=True)
+            
+            if not os.path.exists(log_dir + "/metadata/"):
+                logging.debug("[{}] Making dir...".format(os.getpid()))
+                os.makedirs(log_dir + "/metadata/", exist_ok=True)
+
             offset_split=(int(entry['start']/partition_size))
             entry['csv_file'] = '{}/{}-shard-{}-part-{}.csv'.format(log_dir, friendly_log_name, shard, offset_split)
+            entry['csv_metadata_file'] = '{}/metadata/{}-shard-{}-part-{}-metadata.csv'.format(log_dir, friendly_log_name, shard, offset_split) 
 
         if len(entries_iter) > 0:
             result = await process_pool.coro_map(process_worker, entries_iter)
@@ -273,6 +279,7 @@ def process_worker(result_info):
 
     try:
         lines = []
+        lines_metadata = []
 
         logging.debug("[{}] Parsing...".format(os.getpid()))
         for entry in result_info['entries']:
@@ -308,7 +315,7 @@ def process_worker(result_info):
             }
 
             chain_hash = hashlib.sha256("".join([x['as_der'] for x in cert_data['chain']]).encode('ascii')).hexdigest()
-
+            crt_hash = cert_data['leaf_cert']['fingerprint_sha1']
             # header = "url, cert_index, chain_hash, cert_der, all_domains, not_before, not_after"
             lines.append(
                 ",".join([
@@ -318,17 +325,36 @@ def process_worker(result_info):
                     cert_data['leaf_cert']['as_der'],
                     '|'.join(cert_data['leaf_cert']['all_domains']),
                     str(cert_data['leaf_cert']['not_before']),
-                    str(cert_data['leaf_cert']['not_after'])
+                    str(cert_data['leaf_cert']['not_after']),
+                    str(mtl.Timestamp),
+                    cert_data['leaf_cert']['fingerprint_sha1']
+                ]) + "\n"
+            )
+
+            lines_metadata.append(
+                ",".join([
+                    result_info['log_info']['url'],
+                    str(mtl.Timestamp),
+                    str(entry['cert_index']),
+                    crt_hash
                 ]) + "\n"
             )
 
         lines_expected = end - start + 1
         if len(lines) != lines_expected:
             logging.error("Too many or too few certificates found in interval {}-{}. Found {}, expected {}".format(start, end, len(lines), lines_expected))
+
+		# Write csv file
         csv_file = result_info['csv_file']
         with open(csv_file, 'a', encoding='utf8') as f:
             f.write("".join(lines))
         logging.debug("[{}] Interval {}-{} written to {}".format(os.getpid(), start, end, csv_file))
+	   
+        # Write metadata
+        csv_metatada_file = result_info['csv_metadata_file']
+        with open(csv_metatada_file, 'a', encoding='utf8') as f:
+            f.write("".join(lines_metadata))
+        logging.debug("[{}] Interval {}-{} written to {}".format(os.getpid(), start, end, csv_metatada_file))
 
     except Exception as e:
         logging.exception("[{}] Failed to handle {}, interval {}-{}! {}".format(os.getpid(), result_info['log_info']['url'], start, end, e))
