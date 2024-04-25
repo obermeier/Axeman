@@ -29,7 +29,7 @@ RETRY_WAIT = 8
 DOWNLOAD_CONCURRENCY = 4 
 MAX_QUEUE_SIZE = 50 
 PARTITION_SIZE=2000000
-DEFAULT_TIMEOUT = ClientTimeout(connect=10)
+DEFAULT_TIMEOUT = ClientTimeout(connect=50, total=50, sock_read=90)
 BAD_CTL_SERVERS = [
     "ct.ws.symantec.com", "vega.ws.symantec.com", "deneb.ws.symantec.com", "sirius.ws.symantec.com",
     "log.certly.io", "ct.izenpe.com", "ct.izenpe.eus", "ct.wosign.com", "ctlog.wosign.com", "ctlog2.wosign.com",
@@ -233,8 +233,17 @@ async def processing_coro(download_results_queue, ctl_progress, output_dir, part
         for _ in range(int(process_pool.pool_workers)):
             entries = await download_results_queue.get()
             if entries is not None:
+                #logging.info(len(entries))
+                #logging.info(len(entries["entries"]))
+                #logging.info(entries["start"])
+                #logging.info(entries["end"])
+
+                if len(entries["entries"]) != (entries["end"] - entries["start"]) + 1:
+                    logging.error("Expected {} but was {}".format((entries["end"] - entries["start"]) + 1, len(entries["entries"])))
+
                 entries_iter.append(entries)
             else:
+                logging.warning("Empty entry in result que")
                 done = True
                 break
 
