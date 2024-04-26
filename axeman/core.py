@@ -126,6 +126,7 @@ async def download_worker(session, log_info, work_deque, download_queue):
                 # or a simple timeout. A bit of a hack, but I really don't wanna loose data here. A better solution would be
                 # to have a separate waiting queue since this current implementation behaves much like a spin lock
                 logging.info("Exception getting interval {}-{}, '{}', retrying in {} sec...".format(start, end, e, RETRY_WAIT))
+                logging.info("Message: {} ...".format(str(response)[:200]))
                 await sleep(RETRY_WAIT)
 
         for index, entry in zip(range(start, end + 1), entry_list['entries']):
