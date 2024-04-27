@@ -8,6 +8,7 @@ import aioprocessing
 import logging
 import locale
 import json
+import random
 
 import argparse
 import asyncio
@@ -25,7 +26,8 @@ try:
 except:
     pass
 
-RETRY_WAIT = 8 
+RETRY_WAIT = 30 
+INIT_REQUEST_DELAY = 0.0
 DOWNLOAD_CONCURRENCY = 4 
 MAX_QUEUE_SIZE = 50 
 PARTITION_SIZE=2000000
@@ -107,6 +109,7 @@ class CTLProgress:
 
 
 async def download_worker(session, log_info, work_deque, download_queue):
+    request_delay = INIT_REQUEST_DELAY
     while True:
         try:
             start, end = work_deque.popleft()
@@ -118,13 +121,23 @@ async def download_worker(session, log_info, work_deque, download_queue):
         while True:
             try:
                 async with session.get(certlib.DOWNLOAD.format(log_info['url'], start, end)) as response:
+                    if response.status == 429:
+                        # Delay requests if too many requests were sent
+                        if request_delay == 0:
+                            request_delay = 1 + random.random()
+                        else:
+                            request_delay *= 2
+                        logging.info("New request delay {}".format(request_delay))
+
                     entry_list = await response.json()
                     logging.debug("[{}] Retrieved interval {}-{}...".format(log_info['url'], start, end))
+                    await sleep(request_delay)
                     break
             except Exception as e:
                 # Normally "Attempt to decode JSON with unexpected mimetype"->"Too many connections" with "type text/plain;"
                 # or a simple timeout. A bit of a hack, but I really don't wanna loose data here. A better solution would be
                 # to have a separate waiting queue since this current implementation behaves much like a spin lock
+
                 logging.info("Exception getting interval {}-{}, '{}', retrying in {} sec...".format(start, end, e, RETRY_WAIT))
                 logging.info("Message: {} ...".format(str(response)[:200]))
                 await sleep(RETRY_WAIT)
@@ -277,7 +290,6 @@ async def processing_coro(download_results_queue, ctl_progress, output_dir, part
     process_pool.close()
 
     await process_pool.coro_join()
-
 
 def process_worker(result_info):
     logging.debug("Worker {} starting...".format(os.getpid()))
