@@ -15,7 +15,7 @@ import asyncio
 from collections import deque
 import uvloop
 from OpenSSL import crypto
-from aiohttp import ClientTimeout
+from aiohttp import ClientTimeout, client_exceptions
 
 from . import certlib
 
@@ -133,7 +133,7 @@ async def download_worker(session, log_info, work_deque, download_queue):
                     logging.debug("[{}] Retrieved interval {}-{}...".format(log_info['url'], start, end))
                     await sleep(request_delay)
                     break
-            except client_exceptions.ServerTimeoutError:
+            except client_exceptions.ServerTimeoutError as e:
                 logging.info("ServerTimeoutError getting interval {}-{}, '{}', retrying in {} sec...".format(start, end, e, RETRY_WAIT))
                 await sleep(RETRY_WAIT)
 
