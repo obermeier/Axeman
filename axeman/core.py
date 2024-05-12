@@ -31,7 +31,7 @@ INIT_REQUEST_DELAY = 0.0
 DOWNLOAD_CONCURRENCY = 4 
 MAX_QUEUE_SIZE = 50 
 PARTITION_SIZE=2000000
-DEFAULT_TIMEOUT = ClientTimeout(connect=50, total=50, sock_read=90)
+DEFAULT_TIMEOUT = ClientTimeout(connect=50, total=None, sock_read=90, sock_connect=20)
 BAD_CTL_SERVERS = [
     "ct.ws.symantec.com", "vega.ws.symantec.com", "deneb.ws.symantec.com", "sirius.ws.symantec.com",
     "log.certly.io", "ct.izenpe.com", "ct.izenpe.eus", "ct.wosign.com", "ctlog.wosign.com", "ctlog2.wosign.com",
@@ -133,6 +133,10 @@ async def download_worker(session, log_info, work_deque, download_queue):
                     logging.debug("[{}] Retrieved interval {}-{}...".format(log_info['url'], start, end))
                     await sleep(request_delay)
                     break
+            except client_exceptions.ServerTimeoutError:
+                logging.info("ServerTimeoutError getting interval {}-{}, '{}', retrying in {} sec...".format(start, end, e, RETRY_WAIT))
+                await sleep(RETRY_WAIT)
+
             except Exception as e:
                 # Normally "Attempt to decode JSON with unexpected mimetype"->"Too many connections" with "type text/plain;"
                 # or a simple timeout. A bit of a hack, but I really don't wanna loose data here. A better solution would be
