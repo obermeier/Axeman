@@ -26,7 +26,7 @@ try:
 except:
     pass
 
-RETRY_WAIT = 30 
+RETRY_WAIT = 5 
 INIT_REQUEST_DELAY = 0.0
 DOWNLOAD_CONCURRENCY = 4 
 MAX_QUEUE_SIZE = 50 
@@ -124,11 +124,12 @@ async def download_worker(session, log_info, work_deque, download_queue):
                     if response.status == 429:
                         # Delay requests if too many requests were sent
                         if request_delay == 0:
-                            request_delay = 1 + random.random()
+                            request_delay = 1 #+ (random.random() * 50)
                         else:
-                            request_delay *= 2
+                            request_delay += 1 
                         logging.info("New request delay {}".format(request_delay))
 
+                    # request_delay = request_delay -1
                     entry_list = await response.json()
                     logging.debug("[{}] Retrieved interval {}-{}...".format(log_info['url'], start, end))
                     await sleep(request_delay)
