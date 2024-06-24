@@ -78,7 +78,12 @@ async def get_max_block_size(log, session):
     #print(DOWNLOAD.format(log['url'], 0, 10000))
     async with session.get(DOWNLOAD.format(log['url'], 0, 10000)) as response:
         entries = await response.json()
-        return len(entries['entries'])
+        block_size = len(entries['entries'])
+
+        if ((block_size - 100) > 0):
+            return ( block_size- 100) # Reduce block size to minimize resource exhausted errors because of too large messages.
+        else:
+            return block_size
 
 
 async def retrieve_log_info(log, session):
