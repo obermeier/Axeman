@@ -42,6 +42,7 @@ BAD_CTL_SERVERS = [
     "dodo.ct.comodo.com"
 ]
 
+block_size_reduce_factor=0
 
 # This class is in no way thread safe!, And I really don't know if it need to...
 class CTLProgress:
@@ -189,7 +190,7 @@ async def retrieve_certificates(loop, ctl_url, ctl_progress, only_known_ctls=Fal
 
             logging.info("Downloading certificates for {}".format(log['description']))
             try:
-                log_info = await certlib.retrieve_log_info(log, session)
+                log_info = await certlib.retrieve_log_info(log, session, block_size_reduce_factor)
             except (aiohttp.ClientConnectorError, aiohttp.ServerTimeoutError, aiohttp.ClientOSError, aiohttp.ClientResponseError) as e:
                 logging.exception("Failed to connect to CTL! -> {} - skipping.".format(e))
                 continue
@@ -403,7 +404,7 @@ async def get_certs_and_print():
                 continue
 
             try:
-                log_info = await certlib.retrieve_log_info(log, session)
+                log_info = await certlib.retrieve_log_info(log, session, block_size_reduce_factor)
                 print("    \\- Status:         OK")
                 print("    \\- Owner:          {}".format(log_info['operated_by']))
                 print("    \\- Cert Count:     {}".format(locale.format("%d", log_info['tree_size'], grouping=True)))
@@ -436,6 +437,8 @@ def main():
 
     parser.add_argument('-p', dest="progress_file", action="store", help="File hold the progress")
 
+    parser.add_argument('-r', dest='block_size_reduce_factor', action='store', default=0, type=int, help="Calculated blocksize will be reduced by this number")
+
     args = parser.parse_args()
 
     if args.list_mode:
@@ -456,6 +459,8 @@ def main():
     else:
         ctl_progress = CTLProgress(filename=args.progress_file)
         loop.run_until_complete(retrieve_certificates(loop, ctl_progress=ctl_progress, concurrency_count=args.concurrency_count, output_directory=args.output_dir))
+    
+    block_size_reduce_factor=args.block_size_reduce_factor
     print(args.ctl_url)
 
 if __name__ == "__main__":
