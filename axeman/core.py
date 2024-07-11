@@ -26,9 +26,9 @@ try:
 except:
     pass
 
-RETRY_WAIT = 5 
+RETRY_WAIT = 10 
 INIT_REQUEST_DELAY = 0.0
-DOWNLOAD_CONCURRENCY = 4 
+DOWNLOAD_CONCURRENCY = 1 
 MAX_QUEUE_SIZE = 50 
 PARTITION_SIZE=2000000
 DEFAULT_TIMEOUT = ClientTimeout(connect=50, total=None, sock_read=90, sock_connect=20)
@@ -125,9 +125,9 @@ async def download_worker(session, log_info, work_deque, download_queue):
                     if response.status == 429:
                         # Delay requests if too many requests were sent
                         if request_delay == 0:
-                            request_delay = 1 #+ (random.random() * 50)
+                            request_delay = 0.05 #+ (random.random() * 50)
                         else:
-                            request_delay += 1 
+                            request_delay += 0.05 
                         logging.info("New request delay {}".format(request_delay))
 
                     # request_delay = request_delay -1
@@ -145,8 +145,8 @@ async def download_worker(session, log_info, work_deque, download_queue):
                 # to have a separate waiting queue since this current implementation behaves much like a spin lock
 
                 logging.info("Exception getting interval {}-{}, '{}', retrying in {} sec...".format(start, end, e, RETRY_WAIT))
-                logging.info("Message: {} ...".format(str(response)[:200]))
-                await sleep(RETRY_WAIT)
+                logging.info("Message: {} ...".format(str(response)[:1000]))
+                sleep(RETRY_WAIT)
 
         for index, entry in zip(range(start, end + 1), entry_list['entries']):
             entry['cert_index'] = index
