@@ -125,11 +125,11 @@ async def download_worker(session, log_info, work_deque, download_queue):
                     if response.status == 429:
                         # Delay requests if too many requests were sent
                         if request_delay == 0:
-                            request_delay = 0.05 #+ (random.random() * 50)
+                            request_delay = 0.001 #+ (random.random() * 50)
                         else:
-                            request_delay += 0.05 
+                            request_delay += 0.001 
                         logging.info("New request delay {}".format(request_delay))
-
+                        await sleep(RETRY_WAIT)
                     # request_delay = request_delay -1
                     entry_list = await response.json()
                     logging.debug("[{}] Retrieved interval {}-{}...".format(log_info['url'], start, end))
@@ -146,7 +146,7 @@ async def download_worker(session, log_info, work_deque, download_queue):
 
                 logging.info("Exception getting interval {}-{}, '{}', retrying in {} sec...".format(start, end, e, RETRY_WAIT))
                 logging.info("Message: {} ...".format(str(response)[:1000]))
-                sleep(RETRY_WAIT)
+                await sleep(RETRY_WAIT)
 
         for index, entry in zip(range(start, end + 1), entry_list['entries']):
             entry['cert_index'] = index
