@@ -29,7 +29,7 @@ except:
 RETRY_WAIT = 10 
 INIT_REQUEST_DELAY = 0.0
 DOWNLOAD_CONCURRENCY = 1 
-MAX_QUEUE_SIZE = 50 
+MAX_QUEUE_SIZE = 5 
 PARTITION_SIZE=2000000
 DEFAULT_TIMEOUT = ClientTimeout(connect=50, total=None, sock_read=90, sock_connect=20)
 BAD_CTL_SERVERS = [
@@ -41,8 +41,6 @@ BAD_CTL_SERVERS = [
     "clicky.ct.letsencrypt.org", "ct.filippo.io/behindthesofa", "ctlog.gdca.com.cn", "plausible.ct.nordu.net",
     "dodo.ct.comodo.com"
 ]
-
-block_size_reduce_factor=0
 
 # This class is in no way thread safe!, And I really don't know if it need to...
 class CTLProgress:
@@ -177,7 +175,7 @@ async def queue_monitor(log_info, work_deque, download_results_queue, ctl_progre
         await asyncio.sleep(2)
 
 
-async def retrieve_certificates(loop, ctl_url, ctl_progress, only_known_ctls=False, output_directory='/tmp', concurrency_count=DOWNLOAD_CONCURRENCY):
+async def retrieve_certificates(loop, ctl_url, ctl_progress, only_known_ctls=False, output_directory='/tmp', concurrency_count=DOWNLOAD_CONCURRENCY, block_size_reduce_factor=0):
     async with aiohttp.ClientSession(loop=loop, timeout=DEFAULT_TIMEOUT) as session:
         ctl_logs = await certlib.retrieve_ctls(session, ctl_url, ctl_progress.get_keys() if only_known_ctls else [], blacklisted_ctls=BAD_CTL_SERVERS)
         if not ctl_logs:
@@ -275,14 +273,9 @@ async def processing_coro(download_results_queue, ctl_progress, output_dir, part
             if not os.path.exists(log_dir):
                 logging.debug("[{}] Making dir...".format(os.getpid()))
                 os.makedirs(log_dir, exist_ok=True)
-            
-            if not os.path.exists(log_dir + "/metadata/"):
-                logging.debug("[{}] Making dir...".format(os.getpid()))
-                os.makedirs(log_dir + "/metadata/", exist_ok=True)
 
             offset_split=(int(entry['start']/partition_size))
             entry['csv_file'] = '{}/{}-shard-{}-part-{}.csv'.format(log_dir, friendly_log_name, shard, offset_split)
-            entry['csv_metadata_file'] = '{}/metadata/{}-shard-{}-part-{}-metadata.csv'.format(log_dir, friendly_log_name, shard, offset_split) 
 
         if len(entries_iter) > 0:
             result = await process_pool.coro_map(process_worker, entries_iter)
@@ -307,7 +300,6 @@ def process_worker(result_info):
 
     try:
         lines = []
-        lines_metadata = []
 
         logging.debug("[{}] Parsing...".format(os.getpid()))
         for entry in result_info['entries']:
@@ -317,7 +309,11 @@ def process_worker(result_info):
 
             if mtl.LogEntryType == "X509LogEntryType":
                 cert_data['type'] = "X509LogEntry"
-                chain = [crypto.load_certificate(crypto.FILETYPE_ASN1, certlib.Certificate.parse(mtl.Entry).CertData)]
+                chain = []
+                try:
+                    chain = [crypto.load_certificate(crypto.FILETYPE_ASN1, certlib.Certificate.parse(mtl.Entry).CertData)]
+                except Exception as e:
+                    logging.info("Error while parsing chain certificate")
                 extra_data = certlib.CertificateChain.parse(base64.b64decode(entry['extra_data']))
                 for cert in extra_data.Chain:
                     chain.append(crypto.load_certificate(crypto.FILETYPE_ASN1, cert.CertData))
@@ -359,15 +355,6 @@ def process_worker(result_info):
                 ]) + "\n"
             )
 
-            lines_metadata.append(
-                ",".join([
-                    result_info['log_info']['url'],
-                    str(mtl.Timestamp),
-                    str(entry['cert_index']),
-                    crt_hash
-                ]) + "\n"
-            )
-
         lines_expected = end - start + 1
         if len(lines) != lines_expected:
             logging.error("Too many or too few certificates found in interval {}-{}. Found {}, expected {}".format(start, end, len(lines), lines_expected))
@@ -377,12 +364,6 @@ def process_worker(result_info):
         with open(csv_file, 'a', encoding='utf8') as f:
             f.write("".join(lines))
         logging.debug("[{}] Interval {}-{} written to {}".format(os.getpid(), start, end, csv_file))
-	   
-        # Write metadata
-        csv_metatada_file = result_info['csv_metadata_file']
-        with open(csv_metatada_file, 'a', encoding='utf8') as f:
-            f.write("".join(lines_metadata))
-        logging.debug("[{}] Interval {}-{} written to {}".format(os.getpid(), start, end, csv_metatada_file))
 
     except Exception as e:
         logging.exception("[{}] Failed to handle {}, interval {}-{}! {}".format(os.getpid(), result_info['log_info']['url'], start, end, e))
@@ -440,7 +421,7 @@ def main():
     parser.add_argument('-r', dest='block_size_reduce_factor', action='store', default=0, type=int, help="Calculated blocksize will be reduced by this number")
 
     args = parser.parse_args()
-
+    print("FFFFFFFFFFF")
     if args.list_mode:
         loop.run_until_complete(get_certs_and_print())
         return
@@ -451,16 +432,17 @@ def main():
         logging.basicConfig(format='[%(levelname)s:%(name)s] %(asctime)s - %(message)s', level=logging.DEBUG, handlers=handlers)
     else:
         logging.basicConfig(format='[%(levelname)s:%(name)s] %(asctime)s - %(message)s', level=logging.INFO, handlers=handlers)
-
+   
     logging.info("Starting...")
     if args.ctl_url:
         ctl_progress = CTLProgress(key=args.ctl_url.strip("'"), offset=int(args.ctl_offset), filename=args.progress_file)
-        loop.run_until_complete(retrieve_certificates(loop, ctl_url=args.ctl_url.strip("'"), ctl_progress=ctl_progress, only_known_ctls=True, concurrency_count=args.concurrency_count, output_directory=args.output_dir))
+        loop.run_until_complete(retrieve_certificates(loop, ctl_url=args.ctl_url.strip("'"), ctl_progress=ctl_progress, only_known_ctls=True, concurrency_count=args.concurrency_count, output_directory=args.output_dir, block_size_reduce_factor=args.block_size_reduce_factor))
     else:
         ctl_progress = CTLProgress(filename=args.progress_file)
-        loop.run_until_complete(retrieve_certificates(loop, ctl_progress=ctl_progress, concurrency_count=args.concurrency_count, output_directory=args.output_dir))
+        loop.run_until_complete(retrieve_certificates(loop, ctl_progress=ctl_progress, concurrency_count=args.concurrency_count, output_directory=args.output_dir, block_size_reduce_factor=args.block_size_reduce_factor))
     
     block_size_reduce_factor=args.block_size_reduce_factor
+    print("Block reduce factor: " + str(block_size_reduce_factor))
     print(args.ctl_url)
 
 if __name__ == "__main__":
