@@ -88,7 +88,6 @@ async def get_max_block_size(log, session, size_reduce_factor):
 
 async def retrieve_log_info(log, session, size_reduce_factor):
     block_size = await get_max_block_size(log, session, size_reduce_factor)
-    print("FFFFFFF retrive " + str(size_reduce_factor))
     async with session.get(CTL_INFO.format(log['url'])) as response:
         info = await response.json()
         info['block_size'] = block_size
@@ -96,8 +95,13 @@ async def retrieve_log_info(log, session, size_reduce_factor):
         return info
 
 
-async def populate_work(work_deque, log_info, start=0):
+async def populate_work(work_deque, log_info, start=0, end=0):
+
     tree_size = log_info['tree_size']
+
+    if end != 0: ## Add end range
+        tree_size = end
+    
     total_size = tree_size - 1
     block_size = log_info['block_size']
 
@@ -108,7 +112,7 @@ async def populate_work(work_deque, log_info, start=0):
         range_end = min(block_start + block_size - 1, total_size)
         if range_start > range_end:
             break  # happens after a rerun when no new certs has been appended to the log
-        work_deque.append((range_start, range_end))
+        work_deque.append((range_start, range_end, start, end))
 
     return len(work_deque) > 0
 

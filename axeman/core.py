@@ -111,7 +111,7 @@ async def download_worker(session, log_info, work_deque, download_queue):
     request_delay = INIT_REQUEST_DELAY
     while True:
         try:
-            start, end = work_deque.popleft()
+            start, end,  job_range_start,  job_range_end = work_deque.popleft()
         except IndexError:
             return
 
@@ -153,7 +153,9 @@ async def download_worker(session, log_info, work_deque, download_queue):
             'entries': entry_list['entries'],
             'log_info': log_info,
             'start': start,
-            'end': end
+            'end': end,
+            'job_range_start': job_range_start,
+            'job_range_end': job_range_end,
         })
 
 
@@ -175,7 +177,7 @@ async def queue_monitor(log_info, work_deque, download_results_queue, ctl_progre
         await asyncio.sleep(2)
 
 
-async def retrieve_certificates(loop, ctl_url, ctl_progress, only_known_ctls=False, output_directory='/tmp', concurrency_count=DOWNLOAD_CONCURRENCY, block_size_reduce_factor=0):
+async def retrieve_certificates(loop, ctl_url, ctl_progress, only_known_ctls=False, output_directory='/tmp', concurrency_count=DOWNLOAD_CONCURRENCY, block_size_reduce_factor=0, last_index=0):
     async with aiohttp.ClientSession(loop=loop, timeout=DEFAULT_TIMEOUT) as session:
         ctl_logs = await certlib.retrieve_ctls(session, ctl_url, ctl_progress.get_keys() if only_known_ctls else [], blacklisted_ctls=BAD_CTL_SERVERS)
         if not ctl_logs:
@@ -206,7 +208,7 @@ async def retrieve_certificates(loop, ctl_url, ctl_progress, only_known_ctls=Fal
                 #    log_info['tree_size'] = start_pos + MAX_WORK_QUEUE_SIZE 
                 #    print("Fix pathhht")
 
-                result = await certlib.populate_work(work_deque, log_info, start=ctl_progress.get_offset(url))
+                result = await certlib.populate_work(work_deque, log_info, start=ctl_progress.get_offset(url), end=last_index)
                 if not result:
                     logging.info("Log {} needs no update".format(url))
                     continue
@@ -275,7 +277,14 @@ async def processing_coro(download_results_queue, ctl_progress, output_dir, part
                 os.makedirs(log_dir, exist_ok=True)
 
             offset_split=(int(entry['start']/partition_size))
-            entry['csv_file'] = '{}/{}-shard-{}-part-{}.csv'.format(log_dir, friendly_log_name, shard, offset_split)
+            entry['csv_file'] = '{}/{}-shard-{}-part-{}_[{}-{}].csv'.format(
+                log_dir, 
+                friendly_log_name, 
+                shard, 
+                offset_split,
+                entry['job_range_start'],  
+                entry['job_range_end']
+                )
 
         if len(entries_iter) > 0:
             result = await process_pool.coro_map(process_worker, entries_iter)
@@ -410,6 +419,8 @@ def main():
 
     parser.add_argument('-z', dest="ctl_offset", action="store", default=0, help="The CTL offset to start at")
 
+    parser.add_argument('-e', dest="ctl_last_index", action="store", default=0, type=int, help="The CTL offset to end at")
+
     parser.add_argument('-o', dest="output_dir", action="store", default=".", help="The output directory to store certificates in")
 
     parser.add_argument('-v', dest="verbose", action="store_true", help="Print out verbose/debug info")
@@ -421,7 +432,6 @@ def main():
     parser.add_argument('-r', dest='block_size_reduce_factor', action='store', default=0, type=int, help="Calculated blocksize will be reduced by this number")
 
     args = parser.parse_args()
-    print("FFFFFFFFFFF")
     if args.list_mode:
         loop.run_until_complete(get_certs_and_print())
         return
@@ -436,10 +446,10 @@ def main():
     logging.info("Starting...")
     if args.ctl_url:
         ctl_progress = CTLProgress(key=args.ctl_url.strip("'"), offset=int(args.ctl_offset), filename=args.progress_file)
-        loop.run_until_complete(retrieve_certificates(loop, ctl_url=args.ctl_url.strip("'"), ctl_progress=ctl_progress, only_known_ctls=True, concurrency_count=args.concurrency_count, output_directory=args.output_dir, block_size_reduce_factor=args.block_size_reduce_factor))
+        loop.run_until_complete(retrieve_certificates(loop, ctl_url=args.ctl_url.strip("'"), ctl_progress=ctl_progress, only_known_ctls=True, concurrency_count=args.concurrency_count, output_directory=args.output_dir, block_size_reduce_factor=args.block_size_reduce_factor, last_index=args.ctl_last_index))
     else:
         ctl_progress = CTLProgress(filename=args.progress_file)
-        loop.run_until_complete(retrieve_certificates(loop, ctl_progress=ctl_progress, concurrency_count=args.concurrency_count, output_directory=args.output_dir, block_size_reduce_factor=args.block_size_reduce_factor))
+        loop.run_until_complete(retrieve_certificates(loop, ctl_progress=ctl_progress, concurrency_count=args.concurrency_count, output_directory=args.output_dir, block_size_reduce_factor=args.block_size_reduce_factor, last_index=args.ctl_last_index))
     
     block_size_reduce_factor=args.block_size_reduce_factor
     print("Block reduce factor: " + str(block_size_reduce_factor))
