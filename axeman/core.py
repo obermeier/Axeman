@@ -270,13 +270,24 @@ async def processing_coro(download_results_queue, ctl_progress, output_dir, part
                 os.makedirs(log_dir, exist_ok=True)
 
             offset_split=(int(entry['start']/partition_size))
-            entry['csv_file'] = '{}/{}-shard-{}-part-{}_[{}-{}].csv'.format(
-                log_dir, 
-                friendly_log_name, 
-                shard, 
-                offset_split,
-                entry['job_range_start'],  
-                entry['job_range_end']
+
+            if entry['job_range_end'] == 0:
+                entry['csv_file'] = '{}/{}-shard-{}-part-{}.csv'.format(
+                    log_dir, 
+                    friendly_log_name, 
+                    shard, 
+                    offset_split,
+                    entry['job_range_start'],  
+                    entry['job_range_end']
+                )
+            else:
+                entry['csv_file'] = '{}/{}-shard-{}-part-{}_[{}-{}].csv'.format(
+                    log_dir, 
+                    friendly_log_name, 
+                    shard, 
+                    offset_split,
+                    entry['job_range_start'],  
+                    entry['job_range_end']
                 )
 
         if len(entries_iter) > 0:
