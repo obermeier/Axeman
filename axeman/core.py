@@ -196,17 +196,10 @@ async def retrieve_certificates(loop, ctl_url, ctl_progress, only_known_ctls=Fal
                 continue
 
             try:
-                # Limit work_que size
-                MAX_WORK_QUEUE_SIZE=30000
                 block_size = log_info['block_size']
                 start_pos=ctl_progress.get_offset(url)
 
                 print("Block size: " + str(block_size))
-                
-                # Limit number of jobs if limit is reached
-                #if start_pos + MAX_WORK_QUEUE_SIZE < log_info['tree_size']:
-                #    log_info['tree_size'] = start_pos + MAX_WORK_QUEUE_SIZE 
-                #    print("Fix pathhht")
 
                 result = await certlib.populate_work(work_deque, log_info, start=ctl_progress.get_offset(url), end=last_index)
                 if not result:
@@ -445,15 +438,14 @@ def main():
    
     logging.info("Starting...")
     if args.ctl_url:
-        ctl_progress = CTLProgress(key=args.ctl_url.strip("'"), offset=int(args.ctl_offset), filename=args.progress_file)
-        loop.run_until_complete(retrieve_certificates(loop, ctl_url=args.ctl_url.strip("'"), ctl_progress=ctl_progress, only_known_ctls=True, concurrency_count=args.concurrency_count, output_directory=args.output_dir, block_size_reduce_factor=args.block_size_reduce_factor, last_index=args.ctl_last_index))
+        ctl_url = args.ctl_url.strip("'").rstrip("/")
+        ctl_progress = CTLProgress(key=ctl_url, offset=int(args.ctl_offset), filename=args.progress_file)
+        loop.run_until_complete(retrieve_certificates(loop, ctl_url=ctl_url, ctl_progress=ctl_progress, only_known_ctls=True, concurrency_count=args.concurrency_count, output_directory=args.output_dir, block_size_reduce_factor=args.block_size_reduce_factor, last_index=args.ctl_last_index))
     else:
         ctl_progress = CTLProgress(filename=args.progress_file)
         loop.run_until_complete(retrieve_certificates(loop, ctl_progress=ctl_progress, concurrency_count=args.concurrency_count, output_directory=args.output_dir, block_size_reduce_factor=args.block_size_reduce_factor, last_index=args.ctl_last_index))
     
     block_size_reduce_factor=args.block_size_reduce_factor
-    print("Block reduce factor: " + str(block_size_reduce_factor))
-    print(args.ctl_url)
 
 if __name__ == "__main__":
     main()
