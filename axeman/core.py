@@ -276,9 +276,7 @@ async def processing_coro(download_results_queue, ctl_progress, output_dir, part
                     log_dir, 
                     friendly_log_name, 
                     shard, 
-                    offset_split,
-                    entry['job_range_start'],  
-                    entry['job_range_end']
+                    offset_split
                 )
             else:
                 entry['csv_file'] = '{}/{}-shard-{}-part-{}_[{}-{}].csv'.format(
