@@ -333,7 +333,7 @@ def process_worker(result_info):
                 extra_data = certlib.PreCertEntry.parse(base64.b64decode(entry['extra_data']))
                 chain = [crypto.load_certificate(crypto.FILETYPE_ASN1, extra_data.LeafCert.CertData)]
 
-                for cert in extra_data.Chain:
+                for cert in extra_data.CertificateChain.Chain:
                     chain.append(
                         crypto.load_certificate(crypto.FILETYPE_ASN1, cert.CertData)
                     )
@@ -406,6 +406,7 @@ async def get_certs_and_print():
                 print("    \\- Status:         FAILED\n")
 
         print("Total certificate count: {}".format(locale.format("%d", total_count, grouping=True)))
+
 
 
 def main():
