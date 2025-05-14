@@ -7,12 +7,11 @@ from collections import OrderedDict
 from OpenSSL import crypto
 
 CTL_LISTS = 'https://www.gstatic.com/ct/log_list/v3/all_logs_list.json'
-
 CTL_INFO = "{}/ct/v1/get-sth"
-
 DOWNLOAD = "{}/ct/v1/get-entries?start={}&end={}"
 
-from construct import Struct, Byte, Int16ub, Int64ub, Enum, Bytes, Int24ub, this, GreedyBytes, GreedyRange, Terminated, Embedded
+
+from construct import Struct, Byte, Int16ub, Int64ub, Enum, Bytes, Int24ub, this, GreedyBytes, GreedyRange, Terminated
 
 MerkleTreeHeader = Struct(
     "Version"         / Byte,
@@ -34,7 +33,7 @@ CertificateChain = Struct(
 
 PreCertEntry = Struct(
     "LeafCert" / Certificate,
-    Embedded(CertificateChain),
+    "CertificateChain" / CertificateChain,
     Terminated
 )
 
@@ -45,25 +44,10 @@ async def retrieve_ctls(session=None, wanted_url=None, known_ctls=None, blacklis
         operators = ctl_lists['operators']
 
         logs = list()
-        for operator in operators:
-            for log in operator['logs']:
-                if log['url'].endswith('/'):
-                    if log['url'] is None:
-                        log['url'] = log['url'][:-1]
-                        log['operated_by'] = operator['name']
-                        logs.append(log)
-                    else:
-                        if log['url']==wanted_url:
-                            log['url'] = log['url'][:-1]
-                            log['operated_by'] = operator['name']
-                            logs.append(log)
-        if not logs:
-            print("Requested URL not in CTL list {}. Custom entry will be created.".format(CTL_LISTS))
-
-            log = {}
-            log['description'] = "Custom CTL"
-            log['url'] = wanted_url
-            logs.append(log)
+        log = {}
+        log['description'] = "Custom CTL"
+        log['url'] = wanted_url
+        logs.append(log)
 
         return logs
 

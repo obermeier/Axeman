@@ -277,9 +277,7 @@ async def processing_coro(download_results_queue, ctl_progress, output_dir, part
                     log_dir, 
                     friendly_log_name, 
                     shard, 
-                    offset_split,
-                    entry['job_range_start'],  
-                    entry['job_range_end']
+                    offset_split
                 )
             else:
                 entry['csv_file'] = '{}/{}-shard-{}-part-{}_[{}-{}].csv'.format(
@@ -336,7 +334,7 @@ def process_worker(result_info):
                 extra_data = certlib.PreCertEntry.parse(base64.b64decode(entry['extra_data']))
                 chain = [crypto.load_certificate(crypto.FILETYPE_ASN1, extra_data.LeafCert.CertData)]
 
-                for cert in extra_data.Chain:
+                for cert in extra_data.CertificateChain.Chain:
                     chain.append(
                         crypto.load_certificate(crypto.FILETYPE_ASN1, cert.CertData)
                     )
@@ -409,6 +407,7 @@ async def get_certs_and_print():
                 print("    \\- Status:         FAILED\n")
 
         print("Total certificate count: {}".format(locale.format("%d", total_count, grouping=True)))
+
 
 
 def main():
