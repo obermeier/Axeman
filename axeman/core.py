@@ -164,7 +164,8 @@ async def queue_monitor(log_info, work_deque, download_results_queue, ctl_progre
     total_blocks = math.ceil(total_size / log_info['block_size'])
 
     while True:
-        logging.info("Queue Status: Processing Queue Size:{0} Downloaded blocks:{1}/{2} ({3:.4f}%)".format(
+        logging.info("Queue Status: Processing Queue {0} Size:{1} Downloaded blocks:{2}/{3} ({4:.5f}%)".format(
+            log_info['url'],
             download_results_queue.qsize(),
             total_blocks - len(work_deque),
             total_blocks,
