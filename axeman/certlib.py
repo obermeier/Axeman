@@ -44,25 +44,10 @@ async def retrieve_ctls(session=None, wanted_url=None, known_ctls=None, blacklis
         operators = ctl_lists['operators']
 
         logs = list()
-        for operator in operators:
-            for log in operator['logs']:
-                if log['url'].endswith('/'):
-                    if log['url'] is None:
-                        log['url'] = log['url'][:-1]
-                        log['operated_by'] = operator['name']
-                        logs.append(log)
-                    else:
-                        if log['url']==wanted_url:
-                            log['url'] = log['url'][:-1]
-                            log['operated_by'] = operator['name']
-                            logs.append(log)
-        if not logs:
-            print("Requested URL not in CTL list {}. Custom entry will be created.".format(CTL_LISTS))
-
-            log = {}
-            log['description'] = "Custom CTL"
-            log['url'] = wanted_url
-            logs.append(log)
+        log = {}
+        log['description'] = "Custom CTL"
+        log['url'] = wanted_url
+        logs.append(log)
 
         return logs
 
