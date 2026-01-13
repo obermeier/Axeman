@@ -1,4 +1,5 @@
 import os
+import tempfile
 import math
 import base64
 import hashlib
@@ -102,9 +103,14 @@ class CTLProgress:
         if not self.filename:
             return
 
-        with open(self.filename, 'w', encoding='utf8') as f:
-            progress = {key: self.get_offset(key) for key in self.get_keys()}
-            f.write(json.dumps(progress, indent=4))
+        progress = {key: self.get_offset(key) for key in self.get_keys()}
+
+        dir_ = os.path.dirname(self.filename) or "."
+        with tempfile.NamedTemporaryFile("w", encoding="utf8", dir=dir_, delete=False) as tf:
+            json.dump(progress, tf, indent=4)
+            temp_name = tf.name
+
+        os.replace(temp_name, self.filename)  # atomic on most OSes\
 
 
 async def download_worker(session, log_info, work_deque, download_queue):
