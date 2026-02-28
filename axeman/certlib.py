@@ -147,7 +147,8 @@ def dump_cert(certificate):
         "not_before": not_before,
         "not_after": not_after,
         "as_der": base64.b64encode(crypto.dump_certificate(crypto.FILETYPE_ASN1, certificate)).decode('utf-8'),
-        "fingerprint_sha1": str(certificate.digest("sha1"), encoding='utf-8')
+        #"fingerprint_sha1": str(certificate.digest("sha1"), encoding='utf-8'),
+        "fingerprint_sha256": certificate.digest("sha256").decode("utf-8")
     }
 
 
