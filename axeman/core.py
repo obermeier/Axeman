@@ -17,6 +17,7 @@ from collections import deque
 import uvloop
 from OpenSSL import crypto
 from aiohttp import ClientTimeout, client_exceptions
+import ssl
 
 from . import certlib
 
@@ -183,9 +184,24 @@ async def queue_monitor(log_info, work_deque, download_results_queue, ctl_progre
 
         await asyncio.sleep(2)
 
+def build_ssl_context(ca_bundle_path: str | None) -> ssl.SSLContext | None:
+    if not ca_bundle_path:
+        return None
+    if not os.path.isfile(ca_bundle_path):
+        raise FileNotFoundError(f"CA bundle not found: {ca_bundle_path}")
+    ctx = ssl.create_default_context(cafile=ca_bundle_path)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
 
 async def retrieve_certificates(loop, ctl_url, ctl_progress, only_known_ctls=False, output_directory='/tmp', concurrency_count=DOWNLOAD_CONCURRENCY, block_size_reduce_factor=0, last_index=0):
-    async with aiohttp.ClientSession(loop=loop, timeout=DEFAULT_TIMEOUT) as session:
+    
+    ca_path = os.environ.get("AXEMAN_CA_BUNDLE")  # or pull from argparse
+    ssl_ctx = build_ssl_context(ca_path)
+    
+    connector = aiohttp.TCPConnector(ssl=ssl_ctx) if ssl_ctx else aiohttp.TCPConnector()
+
+    async with aiohttp.ClientSession(loop=loop, timeout=DEFAULT_TIMEOUT, connector=connector) as session:
         ctl_logs = await certlib.retrieve_ctls(session, ctl_url, ctl_progress.get_keys() if only_known_ctls else [], blacklisted_ctls=BAD_CTL_SERVERS)
         if not ctl_logs:
             logging.info("No ctl for URL found. [May not exist in list list]")
@@ -440,6 +456,8 @@ def main():
 
     parser.add_argument('-r', dest='block_size_reduce_factor', action='store', default=0, type=int, help="Calculated blocksize will be reduced by this number")
 
+    parser.add_argument("--ca-bundle", dest='ca_budle', action='store', default=os.environ.get("AXEMAN_CA_BUNDLE"), help="Path to a PEM file containing trusted root CAs (defaults to certifi's bundle).",
+)
     args = parser.parse_args()
     if args.list_mode:
         loop.run_until_complete(get_certs_and_print())

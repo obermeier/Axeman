@@ -59,8 +59,8 @@ def _get_owner(log, owners):
 
 
 async def get_max_block_size(log, session, size_reduce_factor):
-    #print(DOWNLOAD.format(log['url'], 0, 10000))
-    async with session.get(DOWNLOAD.format(log['url'], 0, 2000)) as response:
+    print(DOWNLOAD.format(log['url'], 0, size_reduce_factor))
+    async with session.get(DOWNLOAD.format(log['url'], 0, (2000-size_reduce_factor))) as response:
         entries = await response.json()
         block_size = len(entries['entries'])
         print("FFFF BLK " + str(block_size) + "fff " + str(size_reduce_factor))
