@@ -79,42 +79,39 @@ async def retrieve_log_info(log, session, size_reduce_factor):
         return info
 
 
-    async def populate_work(work_deque, log_info, start=0, end=0):
-        tree_size = log_info["tree_size"]
-        block_size = log_info["block_size"]
+async def populate_work(work_deque, log_info, start=0, end=0):
+    tree_size = log_info["tree_size"]
+    block_size = log_info["block_size"]
 
-        if block_size <= 0:
-            raise ValueError(f"Invalid block size: {block_size}")
+    last_available_index = tree_size - 1
 
-        last_available_index = tree_size - 1
+    if end != 0:
+        last_index = min(end, last_available_index)
+    else:
+        last_index = last_available_index
 
-        if end != 0:
-            last_index = min(end, last_available_index)
-        else:
-            last_index = last_available_index
+    if start > last_index:
+        return False
 
-        if start > last_index:
-            return False
+    block_start = (start // block_size) * block_size
 
-        block_start = (start // block_size) * block_size
+    while block_start <= last_index:
+        range_start = max(start, block_start)
+        range_end = min(
+            block_start + block_size - 1,
+            last_index,
+        )
 
-        while block_start <= last_index:
-            range_start = max(start, block_start)
-            range_end = min(
-                block_start + block_size - 1,
-                last_index,
-            )
+        work_deque.append((
+            range_start,
+            range_end,
+            start,
+            end,
+        ))
 
-            work_deque.append((
-                range_start,
-                range_end,
-                start,
-                end,
-            ))
+        block_start += block_size
 
-            block_start += block_size
-
-        return bool(work_deque)
+    return bool(work_deque)
 
 
 def add_all_domains(cert_data):
