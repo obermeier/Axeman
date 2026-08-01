@@ -205,20 +205,6 @@ async def download_worker(session, log_info, work_deque, download_queue):
         })
 
 
-
-        for index, entry in zip(range(start, end + 1), entry_list['entries']):
-            entry['cert_index'] = index
-
-        await download_queue.put({
-            'entries': entry_list['entries'],
-            'log_info': log_info,
-            'start': start,
-            'end': end,
-            'job_range_start': job_range_start,
-            'job_range_end': job_range_end,
-        })
-
-
 async def queue_monitor(log_info, work_deque, download_results_queue, ctl_progress):
     total_size = log_info['tree_size'] - 1
     total_blocks = math.ceil(total_size / log_info['block_size'])
@@ -450,11 +436,11 @@ def process_worker(result_info):
         with open(csv_file, 'a', encoding='utf8') as f:
             f.write("".join(lines))
         logging.debug("[{}] Interval {}-{} written to {}".format(os.getpid(), start, end, csv_file))
-
+        return result_info['log_info']['url'], [start, end]
     except Exception as e:
         logging.exception("[{}] Failed to handle {}, interval {}-{}! {}".format(os.getpid(), result_info['log_info']['url'], start, end, e))
 
-    return result_info['log_info']['url'], [start, end]
+    return None
 
 
 async def get_certs_and_print():
