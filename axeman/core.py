@@ -71,8 +71,17 @@ class CTLProgress:
         self.get_intervals(key).clear()
 
     def get_offset(self, key):
+        self.compress()
         intervals = self.get_intervals(key)
-        return intervals[0][1] + 1 if intervals else 0
+
+        if not intervals:
+            return 0
+
+        # Never advance beyond a missing prefix.
+        if intervals[0][0] != 0:
+            return 0
+
+        return intervals[0][1] + 1
 
     def _set_offset(self, key, offset):
         self._clear_intervals(key)

@@ -79,26 +79,42 @@ async def retrieve_log_info(log, session, size_reduce_factor):
         return info
 
 
-async def populate_work(work_deque, log_info, start=0, end=0):
+    async def populate_work(work_deque, log_info, start=0, end=0):
+        tree_size = log_info["tree_size"]
+        block_size = log_info["block_size"]
 
-    tree_size = log_info['tree_size']
+        if block_size <= 0:
+            raise ValueError(f"Invalid block size: {block_size}")
 
-    if end != 0: ## Add end range
-        tree_size = end
-    
-    total_size = tree_size - 1
-    block_size = log_info['block_size']
+        last_available_index = tree_size - 1
 
-    for block_start in range(math.floor(start / block_size) * block_size, math.ceil(tree_size / block_size) * block_size, block_size):
-        # Cap the start within first block
-        range_start = max(start, block_start)
-        # Cap the end to the last record in the DB
-        range_end = min(block_start + block_size - 1, total_size)
-        if range_start > range_end:
-            break  # happens after a rerun when no new certs has been appended to the log
-        work_deque.append((range_start, range_end, start, end))
+        if end != 0:
+            last_index = min(end, last_available_index)
+        else:
+            last_index = last_available_index
 
-    return len(work_deque) > 0
+        if start > last_index:
+            return False
+
+        block_start = (start // block_size) * block_size
+
+        while block_start <= last_index:
+            range_start = max(start, block_start)
+            range_end = min(
+                block_start + block_size - 1,
+                last_index,
+            )
+
+            work_deque.append((
+                range_start,
+                range_end,
+                start,
+                end,
+            ))
+
+            block_start += block_size
+
+        return bool(work_deque)
 
 
 def add_all_domains(cert_data):
