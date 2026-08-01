@@ -467,6 +467,10 @@ def process_worker(result_info):
         lines_expected = end - start + 1
         if len(lines) != lines_expected:
             logging.error("Too many or too few certificates found in interval {}-{}. Found {}, expected {}".format(start, end, len(lines), lines_expected))
+            raise RuntimeError(
+                f"Interval {start}-{end}: generated "
+                f"{len(lines)} rows, expected {lines_expected}"
+            )
 
 		# Write csv file
         csv_file = result_info['csv_file']
