@@ -153,6 +153,59 @@ async def download_worker(session, log_info, work_deque, download_queue):
                 logging.info("Message: {} ...".format(str(response)[:1000]))
                 await sleep(RETRY_WAIT)
 
+        # Handel case if fever entries are deliverd than requested
+
+        entries = entry_list.get("entries")
+
+        if not isinstance(entries, list):
+            raise ValueError("Response contains no valid 'entries' list")
+
+        if not entries:
+            raise ValueError(
+                f"Empty response for valid interval {start}-{end}"
+            )
+
+        requested_count = end - start + 1
+
+        if len(entries) > requested_count:
+            raise ValueError(
+                f"Received {len(entries)} entries, requested only {requested_count}"
+            )
+
+        actual_end = start + len(entries) - 1
+
+        for index, entry in enumerate(entries, start=start):
+            entry["cert_index"] = index
+
+        if actual_end < end:
+            logging.warning(
+                "Partial response for %s-%s: received %s-%s; queueing %s-%s",
+                start,
+                end,
+                start,
+                actual_end,
+                actual_end + 1,
+                end,
+            )
+
+            work_deque.appendleft((
+                actual_end + 1,
+                end,
+                job_range_start,
+                job_range_end,
+            ))
+
+        await download_queue.put({
+            "entries": entries,
+            "log_info": log_info,
+            "start": start,
+            "end": actual_end,
+            "job_range_start": job_range_start,
+            "job_range_end": job_range_end,
+        })
+
+
+
         for index, entry in zip(range(start, end + 1), entry_list['entries']):
             entry['cert_index'] = index
 
