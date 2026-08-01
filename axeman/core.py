@@ -127,18 +127,47 @@ async def download_worker(session, log_info, work_deque, download_queue):
         while True:
             try:
                 async with session.get(certlib.DOWNLOAD.format(log_info['url'], start, end)) as response:
+
                     if response.status == 429:
-                        # Delay requests if too many requests were sent
-                        if request_delay == 0:
-                            request_delay = 0.001 #+ (random.random() * 50)
-                        else:
-                            request_delay += 0.001 
-                        logging.info("New request delay {}".format(request_delay))
-                        await sleep(RETRY_WAIT)
-                    # request_delay = request_delay -1
+                        retry_after = response.headers.get("Retry-After")
+
+                        try:
+                            wait_seconds = float(retry_after)
+                        except (TypeError, ValueError):
+                            wait_seconds = RETRY_WAIT
+
+                        request_delay = min(
+                            max(request_delay * 2, 0.1),
+                            10.0,
+                        )
+
+                        logging.warning(
+                            "HTTP 429 for interval %s-%s; retrying in %.1f seconds",
+                            start,
+                            end,
+                            wait_seconds,
+                        )
+
+                        await sleep(wait_seconds)
+                        continue
+                    if response.status >= 500:
+                            body = await response.text()
+
+                            logging.warning(
+                                "HTTP %s for interval %s-%s: %s",
+                                response.status,
+                                start,
+                                end,
+                                body[:500],
+                            )
+
+                            await sleep(RETRY_WAIT)
+                            continue
+
+                    # Abort on permanent 4xx errors rather than marking anything complete.
+                    response.raise_for_status()
+
                     entry_list = await response.json()
-                    logging.debug("[{}] Retrieved interval {}-{}...".format(log_info['url'], start, end))
-                    await sleep(request_delay)
                     break
             except client_exceptions.ServerTimeoutError as e:
                 logging.info("ServerTimeoutError getting interval {}-{}, '{}', retrying in {} sec...".format(start, end, e, RETRY_WAIT))
@@ -150,7 +179,6 @@ async def download_worker(session, log_info, work_deque, download_queue):
                 # to have a separate waiting queue since this current implementation behaves much like a spin lock
 
                 logging.info("Exception getting interval {}-{}, '{}', retrying in {} sec...".format(start, end, e, RETRY_WAIT))
-                logging.info("Message: {} ...".format(str(response)[:1000]))
                 await sleep(RETRY_WAIT)
 
         # Handel case if fever entries are deliverd than requested
